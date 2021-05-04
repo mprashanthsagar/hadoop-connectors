@@ -634,7 +634,7 @@ public final class GoogleCloudStorageGrpcWriteChannelTest {
     }
 
     @Override
-    public StorageStub newAsyncStub() {
+    public StorageStub newAsyncStub(StorageResourceId resourceId) {
       return stub;
     }
   }

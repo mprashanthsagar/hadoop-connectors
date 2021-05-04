@@ -1,7 +1,7 @@
 package com.google.cloud.hadoop.gcsio;
 
-import static com.google.common.base.Strings.isNullOrEmpty;
 import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Strings.isNullOrEmpty;
 
 import com.google.api.ClientProto;
 import com.google.api.client.auth.oauth2.Credential;
@@ -155,15 +155,17 @@ class StorageStubProvider {
     this.grpcDecorator = checkNotNull(grpcDecorator, "grpcDecorator cannot be null");
   }
 
-  private ChannelAndRequestCounter buildManagedChannel() {
+  private ChannelAndRequestCounter buildManagedChannel(StorageResourceId resourceId) {
     ActiveRequestCounter counter = new ActiveRequestCounter();
+    ClientInterceptor rlsHeaderClientInterceptor = new RLSHeaderClientInterceptor(
+        resourceId.getBucketName());
     String target =
         isNullOrEmpty(readOptions.getGrpcServerAddress())
             ? DEFAULT_GCS_GRPC_SERVER_ADDRESS
             : readOptions.getGrpcServerAddress();
     ManagedChannel channel = grpcDecorator.createChannelBuilder(target)
         .enableRetry()
-        .intercept(counter)
+        .intercept(counter, rlsHeaderClientInterceptor)
         .userAgent(userAgent)
         .build();
     return new ChannelAndRequestCounter(channel, counter);
@@ -173,20 +175,20 @@ class StorageStubProvider {
     return STUB_BROKEN_ERROR_CODES.contains(statusCode);
   }
 
-  public StorageBlockingStub newBlockingStub() {
-    StorageBlockingStub stub = StorageGrpc.newBlockingStub(getManagedChannel());
+  public StorageBlockingStub newBlockingStub(StorageResourceId resourceId) {
+    StorageBlockingStub stub = StorageGrpc.newBlockingStub(getManagedChannel(resourceId));
     grpcDecorator.applyCallOption(stub);
     return stub;
   }
 
-  public StorageStub newAsyncStub() {
+  public StorageStub newAsyncStub(StorageResourceId resourceId) {
     StorageStub stub =
-        StorageGrpc.newStub(getManagedChannel()).withExecutor(backgroundTasksThreadPool);
+        StorageGrpc.newStub(getManagedChannel(resourceId)).withExecutor(backgroundTasksThreadPool);
     grpcDecorator.applyCallOption(stub);
     return stub;
   }
 
-  private synchronized ManagedChannel getManagedChannel() {
+  private synchronized ManagedChannel getManagedChannel(StorageResourceId resourceId) {
     if (mediaChannelPool.size() >= MEDIA_CHANNEL_MAX_POOL_SIZE) {
       return mediaChannelPool.stream()
           .min(Comparator.comparingInt(ChannelAndRequestCounter::activeRequests))
@@ -194,7 +196,7 @@ class StorageStubProvider {
           .channel;
     }
 
-    ChannelAndRequestCounter channel = buildManagedChannel();
+    ChannelAndRequestCounter channel = buildManagedChannel(resourceId);
     mediaChannelPool.add(channel);
     return channel.channel;
   }

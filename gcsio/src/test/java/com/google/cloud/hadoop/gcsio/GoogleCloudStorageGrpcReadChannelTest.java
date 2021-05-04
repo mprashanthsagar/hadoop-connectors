@@ -737,7 +737,7 @@ public final class GoogleCloudStorageGrpcReadChannelTest {
     }
 
     @Override
-    public StorageBlockingStub newBlockingStub() {
+    public StorageBlockingStub newBlockingStub(StorageResourceId resourceId) {
       return stub;
     }
   }
